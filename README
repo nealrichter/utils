@@ -11,4 +11,9 @@ Neal's Misc Utilities
     - cli_ie7.sh
     - cli_safari.sh
     - Added 10/26/2010
-    
+
+- transpose_csv.pl
+    - transposes a csv file of data
+    - Added 10/26/2010
+    - TODO: add a delimiter option
+      
