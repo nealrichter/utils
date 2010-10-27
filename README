@@ -1,0 +1,8 @@
+Neal's Misc Utilities
+
+- memcachedcli.pl
+    - bare bones get/set/delete/flush for memcache using ascii API
+    - no libmemcached, just echo and netcat 
+    - Added 10/26/2010
+
+    
