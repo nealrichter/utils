@@ -5,4 +5,10 @@ Neal's Misc Utilities
     - no libmemcached, just echo and netcat 
     - Added 10/26/2010
 
+- cli_x.sh
+    - simple browser faking requests with cookie support
+    - cli_firefox.sh
+    - cli_ie7.sh
+    - cli_safari.sh
+    - Added 10/26/2010
     
