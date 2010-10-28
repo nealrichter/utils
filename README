@@ -20,4 +20,5 @@ Neal's Misc Utilities
 - load_generator.pl
     - system load generator with recursive fibonacci
     - look closer, there's another layer of recursion in there
+    - killall is your friend here
     - Added 10/28/2010
