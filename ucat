@@ -1,0 +1,3 @@
+#!/bin/sh
+#universal cat script - DANGER it's silent on error!
+bzcat $1 2> /dev/null || zcat $1 2> /dev/null || cat $1 2> /dev/null
