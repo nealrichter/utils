@@ -30,5 +30,5 @@ END {
     print "90%: ", stat[int(n*.90)];
     print "95%: ", stat[int(n*.95)];
     print "99%: ", stat[int(n*.99)];
-    print "999%: ", stat[int(n*.999)];
+    print "99.9%: ", stat[int(n*.999)];
 }
