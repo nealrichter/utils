@@ -155,22 +155,34 @@ for i, (start, end, comment) in enumerate(timestamps):
         draw.text((960, 350), f"Play {i+1}", fill="lime", font=font_num, anchor="mm")
         draw.text((960, 580), "#35 Brooklyn Richter", fill="white", font=font_name, anchor="mm")
         if comment:
-            # Replace text emoticons with emoji
+            # Replace text emoticons with emoji (bracket tags checked first)
+            bracket_map = {
+                "[bucket]": "🏀", "[flex]": "💪", "[strong]": "💪", "[fire]": "🔥",
+                "[100]": "💯", "[swish]": "🎯", "[check]": "✅",
+            }
             emoticon_map = {
                 ";-(": "😢", ":-(": "😞", ":)": "😊", ":(": "😞",
                 ";)": "😉", ":D": "😁", ":/": "😕", ">:(": "😡",
                 ":P": "😛", "<3": "❤️", ":O": "😮", "XD": "😆",
                 "!!": "🔥", "???": "❓",
-                "[bucket]": "🏀", "[flex]": "💪", "[strong]": "💪", "[fire]": "🔥",
-                "[100]": "💯", "[swish]": "🎯", "[check]": "✅",
             }
             display_comment = comment
             emoji_found = ""
-            for emoticon, emoji in emoticon_map.items():
+            for emoticon, emoji in bracket_map.items():
                 if emoticon in display_comment:
                     emoji_found = emoji
                     display_comment = display_comment.replace(emoticon, "").strip()
                     break
+            if not emoji_found:
+                for emoticon, emoji in emoticon_map.items():
+                    if emoticon in display_comment:
+                        emoji_found = emoji
+                        display_comment = display_comment.replace(emoticon, "").strip()
+                        break
+            # Clean up leftover emoticon text
+            for e in list(bracket_map) + list(emoticon_map):
+                display_comment = display_comment.replace(e, "")
+            display_comment = display_comment.strip()
             draw.text((960, 730), display_comment, fill="yellow", font=font_comment, anchor="mm")
             if emoji_found:
                 try:
