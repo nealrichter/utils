@@ -15,7 +15,7 @@ parser.add_argument("--annotate", action="store_true", help="Insert a clip numbe
 args = parser.parse_args()
 
 timestamps = []
-metadata = {"title": "", "subtitle": "", "date": "", "logo": "", "url": ""}
+metadata = {"title": "", "subtitle": "", "date": "", "logo": "", "url": "", "player": ""}
 
 def time_to_secs(t):
     parts = t.strip().split(":")
@@ -45,6 +45,8 @@ if args.file:
                     metadata["logo"] = line.split("#{logo:")[1].rstrip("} ").strip()
                 elif "#{url}" in line:
                     metadata["url"] = line.split("#{url}")[1].strip()
+                elif "#{player}" in line:
+                    metadata["player"] = line.split("#{player}")[1].strip().strip('"')
                 continue
             comment = ""
             if "#" in line:
@@ -52,10 +54,17 @@ if args.file:
                 # Strip #{play}N tag, keep description
                 if comment.startswith("{play}"):
                     comment = comment.split("}", 1)[1].strip()
-                    # Remove leading number if present
+                    # Extract play number
                     parts = comment.split(" ", 1)
                     if parts[0].isdigit() and len(parts) > 1:
+                        play_num = parts[0]
                         comment = parts[1]
+                    else:
+                        play_num = ""
+                else:
+                    play_num = ""
+            else:
+                play_num = ""
             line = line.split("#")[0].strip()
             if not line:
                 continue
@@ -66,12 +75,12 @@ if args.file:
                 offset = float(parts[1][1:])
                 start = secs_to_time(center - offset)
                 end = secs_to_time(center + offset)
-                timestamps.append((start, end, comment))
+                timestamps.append((start, end, comment, play_num))
             else:
                 # Standard format: START,END or START-END
                 flat = line.replace("-", ",").split(",")
                 if len(flat) >= 2:
-                    timestamps.append((flat[0].strip(), flat[1].strip(), comment))
+                    timestamps.append((flat[0].strip(), flat[1].strip(), comment, play_num))
 elif args.clip:
     for c in args.clip:
         sep = "," if "," in c else "-"
@@ -79,22 +88,22 @@ elif args.clip:
         if len(parts) != 2 or not parts[1]:
             print(f"Error: invalid clip format '{c}', expected START,END (e.g. 00:13:55,00:14:35)")
             exit(1)
-        timestamps.append((parts[0], parts[1], ""))
+        timestamps.append((parts[0], parts[1], "", ""))
 else:
     # Default timestamps (Murray vs Woods Cross Dec 2)
     timestamps = [
-        ("00:13:55", "00:14:35", ""),
-        ("00:14:45", "00:15:15", ""),
-        ("00:15:30", "00:15:59", ""),
-        ("00:25:30", "00:25:50", ""),
-        ("00:29:20", "00:29:40", ""),
-        ("00:35:15", "00:35:35", ""),
-        ("00:48:20", "00:48:39", ""),
-        ("00:51:40", "00:51:59", ""),
-        ("00:52:20", "00:52:39", ""),
-        ("00:54:46", "00:55:25", ""),
-        ("01:01:15", "01:01:35", ""),
-        ("01:14:15", "01:14:35", ""),
+        ("00:13:55", "00:14:35", "", ""),
+        ("00:14:45", "00:15:15", "", ""),
+        ("00:15:30", "00:15:59", "", ""),
+        ("00:25:30", "00:25:50", "", ""),
+        ("00:29:20", "00:29:40", "", ""),
+        ("00:35:15", "00:35:35", "", ""),
+        ("00:48:20", "00:48:39", "", ""),
+        ("00:51:40", "00:51:59", "", ""),
+        ("00:52:20", "00:52:39", "", ""),
+        ("00:54:46", "00:55:25", "", ""),
+        ("01:01:15", "01:01:35", "", ""),
+        ("01:14:15", "01:14:35", "", ""),
     ]
 
 if not timestamps:
@@ -129,17 +138,67 @@ if args.annotate and (metadata["title"] or metadata["subtitle"]):
             font_md = font_xl
             font_sm = font_xl
         logo_path = os.path.join(script_dir, metadata["logo"]) if metadata["logo"] else ""
+        logo_bottom = 30
         if logo_path and os.path.exists(logo_path):
             logo = Image.open(logo_path).convert("RGBA")
-            logo.thumbnail((250, 250))
+            logo = logo.resize((int(logo.width * 300 / logo.height), 300))
             img.paste(logo, ((1920 - logo.width) // 2, 30), logo)
-        draw.text((960, 360), "#35 Brooklyn Richter", fill="white", font=font_xl, anchor="mm")
+            logo_bottom = 350
+        if metadata["player"]:
+            draw.text((960, logo_bottom + 60), metadata["player"], fill="white", font=font_xl, anchor="mm")
         if metadata["title"]:
-            draw.text((960, 490), metadata["title"], fill="lime", font=font_md, anchor="mm")
+            import re
+            title = metadata["title"]
+            try:
+                font_score = ImageFont.truetype(bangers, 100)
+            except:
+                font_score = font_md
+            # If title is long, split into lines at "vs"
+            if len(title) > 40 and " vs " in title:
+                halves = title.split(" vs ", 1)
+                y = logo_bottom + 160
+                for hi, half in enumerate(halves):
+                    parts = re.split(r'\[(\d+)\]', half)
+                    total_w = 0
+                    segs = []
+                    for j, part in enumerate(parts):
+                        f = font_score if j % 2 == 1 else font_md
+                        bbox = draw.textbbox((0, 0), part, font=f)
+                        w = bbox[2] - bbox[0]
+                        segs.append((part, f, w, "lime" if j % 2 == 0 else "white"))
+                        total_w += w
+                    cx = 960 - total_w // 2
+                    for text, f, w, color in segs:
+                        draw.text((cx, y), text, fill=color, font=f, anchor="lm")
+                        cx += w
+                    y += 90
+                    if hi == 0:
+                        draw.text((960, y), "vs", fill="#cccccc", font=font_sm, anchor="mm")
+                        y += 60
+                next_y = y + 20
+            else:
+                parts = re.split(r'\[(\d+)\]', title)
+                total_w = 0
+                segs = []
+                for j, part in enumerate(parts):
+                    f = font_score if j % 2 == 1 else font_md
+                    bbox = draw.textbbox((0, 0), part, font=f)
+                    w = bbox[2] - bbox[0]
+                    segs.append((part, f, w, "lime" if j % 2 == 0 else "white"))
+                    total_w += w
+                cx = 960 - total_w // 2
+                y = logo_bottom + 180
+                for text, f, w, color in segs:
+                    draw.text((cx, y), text, fill=color, font=f, anchor="lm")
+                    cx += w
+                next_y = y + 100
+        else:
+            next_y = logo_bottom + 160
         if metadata["date"]:
-            draw.text((960, 580), metadata["date"], fill="#cccccc", font=font_sm, anchor="mm")
+            draw.text((960, next_y), metadata["date"], fill="#cccccc", font=font_sm, anchor="mm")
+            next_y += 80
         if metadata["subtitle"]:
-            draw.text((960, 700), metadata["subtitle"], fill="yellow", font=font_lg, anchor="mm")
+            draw.text((960, next_y), metadata["subtitle"], fill="yellow", font=font_lg, anchor="mm")
         img.save(out_path)
 
     card_png = os.path.join(tmpdir, "title_card.png")
@@ -156,7 +215,7 @@ if args.annotate and (metadata["title"] or metadata["subtitle"]):
     # Override the card argument with our generated one
     args.card = card_mp4
 
-for i, (start, end, comment) in enumerate(timestamps):
+for i, (start, end, comment, play_num) in enumerate(timestamps):
     if args.annotate:
         count_file = os.path.join(tmpdir, f"count_{i}.mp4")
         card_png = os.path.join(tmpdir, f"count_{i}.png")
@@ -165,9 +224,9 @@ for i, (start, end, comment) in enumerate(timestamps):
         draw = ImageDraw.Draw(img)
         try:
             bangers = os.path.expanduser("~/Library/Fonts/Bangers-Regular.ttf")
-            font_num = ImageFont.truetype(bangers, 280)
-            font_name = ImageFont.truetype(bangers, 100)
-            font_comment = ImageFont.truetype(bangers, 80)
+            font_num = ImageFont.truetype(bangers, 160)
+            font_name = ImageFont.truetype(bangers, 72)
+            font_comment = ImageFont.truetype(bangers, 64)
         except:
             font_num = ImageFont.load_default()
             font_name = font_num
@@ -175,18 +234,28 @@ for i, (start, end, comment) in enumerate(timestamps):
         # Logo
         script_dir = os.path.dirname(os.path.abspath(__file__))
         logo_path = os.path.join(script_dir, metadata["logo"]) if metadata["logo"] else ""
+        logo_bottom = 30
         if logo_path and os.path.exists(logo_path):
             logo = Image.open(logo_path).convert("RGBA")
-            logo.thumbnail((250, 250))
+            logo = logo.resize((int(logo.width * 300 / logo.height), 300))
             lx = (1920 - logo.width) // 2
-            img.paste(logo, (lx, 50), logo)
-        draw.text((960, 350), f"Play {i+1}", fill="lime", font=font_num, anchor="mm")
-        draw.text((960, 580), "#35 Brooklyn Richter", fill="white", font=font_name, anchor="mm")
+            img.paste(logo, (lx, 30), logo)
+            logo_bottom = 350
+        play_label = f"Play {play_num}" if play_num else f"Play {i+1}"
+        draw.text((960, logo_bottom + 120), play_label, fill="lime", font=font_num, anchor="mm")
+        draw.text((960, logo_bottom + 250), metadata["player"], fill="white", font=font_name, anchor="mm")
         if comment:
             # Replace text emoticons with emoji (bracket tags checked first)
             bracket_map = {
                 "[bucket]": "🏀", "[flex]": "💪", "[strong]": "💪", "[fire]": "🔥",
                 "[100]": "💯", "[swish]": "🎯", "[check]": "✅",
+                "[mad]": "😡", "[angry]": "😡", "[meh]": "😕", "[sad]": "😢",
+                "[cry]": "😢", "[love]": "❤️", "[happy]": "😊", "[grin]": "😁",
+                "[shock]": "😮", "[tongue]": "😛", "[lol]": "😆", "[wink]": "😉",
+                "[question]": "❓",
+                "[:(]": "😞", "[:)]": "😊", "[:/]": "😕", "[>:(]": "😡",
+                "[;-(]": "😢", "[:D]": "😁", "[:O]": "😮", "[:P]": "😛",
+                "[XD]": "😆", "[<3]": "❤️", "[;)]": "😉",
             }
             emoticon_map = {
                 ";-(": "😢", ":-(": "😞", ":)": "😊", ":(": "😞",
@@ -211,11 +280,11 @@ for i, (start, end, comment) in enumerate(timestamps):
             for e in list(bracket_map) + list(emoticon_map):
                 display_comment = display_comment.replace(e, "")
             display_comment = display_comment.strip()
-            draw.text((960, 730), display_comment, fill="yellow", font=font_comment, anchor="mm")
+            draw.text((960, logo_bottom + 350), display_comment, fill="yellow", font=font_comment, anchor="mm")
             if emoji_found:
                 try:
-                    emoji_font = ImageFont.truetype("/System/Library/Fonts/Apple Color Emoji.ttc", 160)
-                    draw.text((960, 880), emoji_found, font=emoji_font, anchor="mm", embedded_color=True)
+                    emoji_font = ImageFont.truetype("/System/Library/Fonts/Apple Color Emoji.ttc", 96)
+                    draw.text((960, logo_bottom + 450), emoji_found, font=emoji_font, anchor="mm", embedded_color=True)
                 except:
                     pass
         img = img.convert("RGB")
@@ -242,23 +311,26 @@ for i, (start, end, comment) in enumerate(timestamps):
         base_name = os.path.splitext(os.path.basename(args.file))[0] if args.file else "clip"
         clip_raw = os.path.join(clips_dir, f"{base_name}_clip_{i+1}_raw.mp4")
         clip_file = os.path.join(clips_dir, f"{base_name}_clip_{i+1}.mp4")
-        section = f"*{start}-{end}"
-        subprocess.run([
-            "yt-dlp", "--download-sections", section,
-            "-f", "bv*+ba/b", "-S", "vcodec:h264",
-            "--merge-output-format", "mp4",
-            "--force-overwrites",
-            "-o", clip_raw, metadata["url"]
-        ])
-        # Re-encode to normalize fps/resolution/audio for clean concat
-        subprocess.run([
-            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-            "-i", clip_raw,
-            "-c:v", "libx264", "-profile:v", "main", "-crf", "18", "-pix_fmt", "yuv420p",
-            "-r", "30", "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
-            clip_file
-        ])
-        os.remove(clip_raw)
+        if os.path.exists(clip_file):
+            print(f"  Using cached: {clip_file}")
+        else:
+            section = f"*{start}-{end}"
+            subprocess.run([
+                "yt-dlp", "--download-sections", section,
+                "-f", "bv*+ba/b", "-S", "vcodec:h264",
+                "--merge-output-format", "mp4",
+                "--force-overwrites",
+                "-o", clip_raw, metadata["url"]
+            ])
+            # Re-encode to normalize fps/resolution/audio for clean concat
+            subprocess.run([
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-i", clip_raw,
+                "-c:v", "libx264", "-profile:v", "main", "-crf", "18", "-pix_fmt", "yuv420p",
+                "-r", "30", "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
+                clip_file
+            ])
+            os.remove(clip_raw)
         # Copy to temp location for concat
         import shutil as _shutil
         _shutil.copy2(clip_file, temp_filename)

@@ -60,22 +60,30 @@ Format: `TIME_SPEC #{play}N description [emoji]`
 
 ### Emoji Triggers
 
-| Trigger | Emoji |
-|---------|-------|
-| `[bucket]` | 🏀 |
-| `[flex]` / `[strong]` | 💪 |
-| `[fire]` / `!!` | 🔥 |
-| `[100]` | 💯 |
-| `[swish]` | 🎯 |
-| `[check]` | ✅ |
-| `:)` | 😊 |
-| `:(` / `:-(` | 😞 |
-| `;-(` | 😢 |
-| `>:(` | 😡 |
-| `:D` | 😁 |
-| `:/` | 😕 |
-| `:O` | 😮 |
-| `<3` | ❤️ |
+Use `[word]` or `[emoticon]` in clip comments to display an emoji on the interstitial card.
+
+| Trigger | Aliases | Emoji |
+|---------|---------|-------|
+| `[bucket]` | | 🏀 |
+| `[flex]` | `[strong]` | 💪 |
+| `[fire]` | | 🔥 |
+| `[100]` | | 💯 |
+| `[swish]` | | 🎯 |
+| `[check]` | | ✅ |
+| `[happy]` | `[:)]` | 😊 |
+| `[sad]` | `[:(]` | 😞 |
+| `[cry]` | `[;-(]` | 😢 |
+| `[mad]` | `[angry]`, `[>:(]` | 😡 |
+| `[meh]` | `[:/]` | 😕 |
+| `[grin]` | `[:D]` | 😁 |
+| `[shock]` | `[:O]` | 😮 |
+| `[tongue]` | `[:P]` | 😛 |
+| `[lol]` | `[XD]` | 😆 |
+| `[wink]` | `[;)]` | 😉 |
+| `[love]` | `[<3]` | ❤️ |
+| `[question]` | | ❓ |
+
+Plain text emoticons (without brackets) also work as a fallback: `:)`, `:(`, `:/`, `>:(`, `;-(`, `:D`, `:O`, `:P`, `XD`, `<3`, `!!`, `???`
 
 ## Examples
 
