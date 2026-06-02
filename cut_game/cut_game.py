@@ -6,7 +6,7 @@ import os
 import tempfile
 
 parser = argparse.ArgumentParser(description="Cut clips from a game video and merge into a highlight reel.")
-parser.add_argument("-g", "--game", required=True, help="Input game video file")
+parser.add_argument("-g", "--game", help="Input game video file (not needed if #{url} is in timestamps file)")
 parser.add_argument("-c", "--clip", nargs="+", help="Clip time ranges as START,END (e.g. 00:13:55,00:14:35)")
 parser.add_argument("-f", "--file", help="File with clip timestamps, one START,END per line")
 parser.add_argument("-o", "--output", default="highlight_reel.mp4", help="Output filename (default: highlight_reel.mp4)")
@@ -15,7 +15,17 @@ parser.add_argument("--annotate", action="store_true", help="Insert a clip numbe
 args = parser.parse_args()
 
 timestamps = []
-metadata = {"title": "", "subtitle": "", "date": ""}
+metadata = {"title": "", "subtitle": "", "date": "", "logo": "", "url": ""}
+
+def time_to_secs(t):
+    parts = t.strip().split(":")
+    return int(parts[0])*3600 + int(parts[1])*60 + float(parts[2])
+
+def secs_to_time(s):
+    h = int(s // 3600)
+    m = int((s % 3600) // 60)
+    sec = s % 60
+    return f"{h:02d}:{m:02d}:{sec:05.2f}"
 
 if args.file:
     with open(args.file) as f:
@@ -31,6 +41,10 @@ if args.file:
                     metadata["subtitle"] = line.split("#{subtitle}")[1].strip()
                 elif "#{date}" in line:
                     metadata["date"] = line.split("#{date}")[1].strip()
+                elif "#{logo:" in line:
+                    metadata["logo"] = line.split("#{logo:")[1].rstrip("} ").strip()
+                elif "#{url}" in line:
+                    metadata["url"] = line.split("#{url}")[1].strip()
                 continue
             comment = ""
             if "#" in line:
@@ -45,9 +59,19 @@ if args.file:
             line = line.split("#")[0].strip()
             if not line:
                 continue
-            parts = line.replace("-", ",").split(",")
-            if len(parts) >= 2:
-                timestamps.append((parts[0].strip(), parts[1].strip(), comment))
+            # Handle center-offset format: "00:16:30, ~6"
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) >= 2 and parts[1].startswith("~"):
+                center = time_to_secs(parts[0])
+                offset = float(parts[1][1:])
+                start = secs_to_time(center - offset)
+                end = secs_to_time(center + offset)
+                timestamps.append((start, end, comment))
+            else:
+                # Standard format: START,END or START-END
+                flat = line.replace("-", ",").split(",")
+                if len(flat) >= 2:
+                    timestamps.append((flat[0].strip(), flat[1].strip(), comment))
 elif args.clip:
     for c in args.clip:
         sep = "," if "," in c else "-"
@@ -77,6 +101,10 @@ if not timestamps:
     print("No clips specified. Use -c, -f, or run without either for defaults.")
     exit(1)
 
+if not args.game and not metadata["url"]:
+    print("Error: provide -g <game_file> or include #{url} in timestamps file.")
+    exit(1)
+
 tmpdir = tempfile.mkdtemp(prefix="cut_game_")
 temp_files = []
 list_file = os.path.join(tmpdir, "mylist.txt")
@@ -100,8 +128,8 @@ if args.annotate and (metadata["title"] or metadata["subtitle"]):
             font_lg = font_xl
             font_md = font_xl
             font_sm = font_xl
-        logo_path = os.path.join(script_dir, "murray_spartans_logo.png")
-        if os.path.exists(logo_path):
+        logo_path = os.path.join(script_dir, metadata["logo"]) if metadata["logo"] else ""
+        if logo_path and os.path.exists(logo_path):
             logo = Image.open(logo_path).convert("RGBA")
             logo.thumbnail((250, 250))
             img.paste(logo, ((1920 - logo.width) // 2, 30), logo)
@@ -146,8 +174,8 @@ for i, (start, end, comment) in enumerate(timestamps):
             font_comment = font_num
         # Logo
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        logo_path = os.path.join(script_dir, "murray_spartans_logo.png")
-        if os.path.exists(logo_path):
+        logo_path = os.path.join(script_dir, metadata["logo"]) if metadata["logo"] else ""
+        if logo_path and os.path.exists(logo_path):
             logo = Image.open(logo_path).convert("RGBA")
             logo.thumbnail((250, 250))
             lx = (1920 - logo.width) // 2
@@ -203,19 +231,46 @@ for i, (start, end, comment) in enumerate(timestamps):
         temp_files.append(count_file)
     temp_filename = os.path.join(tmpdir, f"clip_{i}.mp4")
     temp_files.append(temp_filename)
-    def _to_secs(t):
-        parts = t.split(":")
-        return int(parts[0])*3600 + int(parts[1])*60 + float(parts[2])
-    duration = _to_secs(end) - _to_secs(start)
+    duration = time_to_secs(end) - time_to_secs(start)
     print(f"Extracting Clip {i+1}: {start} to {end} ({duration:.0f}s)")
-    subprocess.run([
-        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-        "-ss", start, "-to", end,
-        "-i", args.game,
-        "-c:v", "libx264", "-profile:v", "main", "-crf", "18", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "128k",
-        temp_filename
-    ])
+    if metadata["url"]:
+        # Use yt-dlp to extract from YouTube
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        clips_dir = os.path.join(script_dir, "clips_segments")
+        os.makedirs(clips_dir, exist_ok=True)
+        # Derive base name from timestamps filename
+        base_name = os.path.splitext(os.path.basename(args.file))[0] if args.file else "clip"
+        clip_raw = os.path.join(clips_dir, f"{base_name}_clip_{i+1}_raw.mp4")
+        clip_file = os.path.join(clips_dir, f"{base_name}_clip_{i+1}.mp4")
+        section = f"*{start}-{end}"
+        subprocess.run([
+            "yt-dlp", "--download-sections", section,
+            "-f", "bv*+ba/b", "-S", "vcodec:h264",
+            "--merge-output-format", "mp4",
+            "--force-overwrites",
+            "-o", clip_raw, metadata["url"]
+        ])
+        # Re-encode to normalize fps/resolution/audio for clean concat
+        subprocess.run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-i", clip_raw,
+            "-c:v", "libx264", "-profile:v", "main", "-crf", "18", "-pix_fmt", "yuv420p",
+            "-r", "30", "-c:a", "aac", "-b:a", "128k", "-ar", "48000",
+            clip_file
+        ])
+        os.remove(clip_raw)
+        # Copy to temp location for concat
+        import shutil as _shutil
+        _shutil.copy2(clip_file, temp_filename)
+    else:
+        subprocess.run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-ss", start, "-to", end,
+            "-i", args.game,
+            "-c:v", "libx264", "-profile:v", "main", "-crf", "18", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "128k",
+            temp_filename
+        ])
 
 with open(list_file, "w") as f:
     if args.card:
@@ -224,6 +279,17 @@ with open(list_file, "w") as f:
         f.write(f"file '{temp_file}'\n")
     if args.card:
         f.write(f"file '{os.path.abspath(args.card)}'\n")
+
+# Also write a manifest in clips_segments/ if using yt-dlp
+if metadata["url"] and args.file:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    clips_dir = os.path.join(script_dir, "clips_segments")
+    base_name = os.path.splitext(os.path.basename(args.file))[0]
+    manifest_path = os.path.join(clips_dir, f"{base_name}.txt")
+    with open(manifest_path, "w") as mf:
+        for temp_file in temp_files:
+            mf.write(f"file '{os.path.abspath(temp_file)}'\n")
+    print(f"Manifest written: {manifest_path}")
 
 print("Stitching clips together...")
 subprocess.run([
